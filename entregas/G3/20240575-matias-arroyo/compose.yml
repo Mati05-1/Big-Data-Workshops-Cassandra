@@ -1,0 +1,71 @@
+# =============================================================================
+#  Taller Apache Cassandra 5.0 - Big Data, UFM 2026 S2
+#
+#  Parte 2: el nodo cassandra3 del cluster del grupo G3 (UFM-G3, datacenter
+#  dc-g3). Cada integrante corre un nodo en su laptop; las tres laptops se ven
+#  por Tailscale.
+#
+#    cassandra1 -> laptop de Philip, 100.104.232.15 (nodo semilla)
+#    cassandra2 -> laptop del companero, 100.103.234.103
+#    cassandra3 -> esta laptop, 100.126.254.74 (Tailscale)
+#
+#  Orden de arranque: cassandra1, luego cassandra2, luego cassandra3; cada uno
+#  cuando el anterior ya esta UN en "nodetool status".
+#
+#  Los datos viven en volumenes con nombre y sobreviven a "docker compose down".
+# =============================================================================
+name: taller-cassandra
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # CASSANDRA3 -> desde tu maquina es localhost:9042 (protocolo CQL)
+  #
+  # En Cassandra no hay NameNode ni controller: todos los nodos son iguales.
+  # Cualquiera recibe una consulta y la reparte (es el "coordinador").
+  # ---------------------------------------------------------------------------
+  cassandra3:
+    image: cassandra:5.0.8
+    container_name: cassandra3
+    hostname: cassandra3
+    ports:
+      # 7000: comunicacion entre nodos (gossip y copias).
+      - "7000:7000"
+      # 9042: CQL, para cqlsh y las aplicaciones.
+      - "9042:9042"
+    environment:
+      # Memoria de Java para este nodo. Las dos variables van juntas.
+      # MAX_HEAP_SIZE minimo: 256M.
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 128M
+
+      # Nombre del cluster: igual en los tres nodos.
+      CASSANDRA_CLUSTER_NAME: UFM-G3
+
+      # El snitch le dice a Cassandra en que datacenter y rack vive el nodo.
+      # GossipingPropertyFileSnitch lee CASSANDRA_DC y CASSANDRA_RACK y lo
+      # anuncia a los demas por gossip.
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_DC: dc-g3
+      CASSANDRA_RACK: rack1
+
+      # La IP que este nodo anuncia a los demas: la de esta laptop en Tailscale.
+      # (listen_address queda en la IP interna del contenedor; Docker reenvia
+      # el puerto 7000 de la laptop al contenedor.)
+      CASSANDRA_BROADCAST_ADDRESS: 100.126.254.74
+
+      # Nodo semilla: la IP de Tailscale de la laptop de cassandra1.
+      # Es el punto de contacto para unirse al cluster.
+      CASSANDRA_SEEDS: 100.104.232.15
+    volumes:
+      - cassandra3-data:/var/lib/cassandra
+      # Los CSV del repo quedan dentro del contenedor en /data (solo lectura).
+      - ./data:/data:ro
+
+# -----------------------------------------------------------------------------
+# Volumenes con nombre: aqui viven los datos de cada nodo.
+#   docker compose down      -> los conserva
+#   docker compose down -v   -> LOS BORRA (solo para empezar de cero)
+# -----------------------------------------------------------------------------
+volumes:
+  cassandra3-data:
